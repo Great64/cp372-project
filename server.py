@@ -1,6 +1,6 @@
 import socket, os, time, hashlib, json
 
-HOST = "10.0.0.129"
+HOST = "localhost"
 PORT = 1111
 
 USER_FILE = "users.json"
