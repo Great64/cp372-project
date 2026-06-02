@@ -1,17 +1,46 @@
-import socket, os, time, hashlib, json
+'''
+CP372 - Computer Networks, Spring 2026
+Assignment 1: TCP Client-Server Application
 
+Script Name: server.py
+Description: TCP server built with Python Socket API. Handles single-client 
+             connections, user authentication, message relay, and reliable 
+             file transfer with SHA-256 integrity verification.
+Capabilities:
+    - User access control via external JSON file
+    - Text message echo/acknowledgment
+    - Binary file reception with hash verification
+    - Graceful connection termination and error handling
+
+Authors:
+    Obeidi, Bassil
+    Barghouti, Alaa
+    Ozog, Philip
+    Soja, Max
+    Yamin, Noah
+'''
+
+# Core libraries: socket (Python TCP communication), os (file checks), json (authorized user database), hashlib (SHA-256)
+import socket, os, hashlib, json
+
+#Server address configuration 
 HOST = "localhost"
 PORT = 1111
 
+#Global variables for user auth database
 USER_FILE = "users.json"
 VALID_USERS = []
 STORAGE_DIR = "server_storage"
 
-# Create the storage directory if it doesn't exist
+# Create the file storage directory if it doesn't exist
 if not os.path.exists(STORAGE_DIR):
     os.makedirs(STORAGE_DIR)
 
 def load_valid_users():
+    """
+    Loads the list of approved usernames from the external JSON file.
+    Populates the global VALID_USERS list for runtime authentication checks.
+    """
     global VALID_USERS
     try:
         with open(USER_FILE, 'r') as file:
@@ -27,6 +56,12 @@ def load_valid_users():
 
 
 def setup():
+    """
+    Creates a TCP socket, binds it to the configured HOST and PORT, 
+    and begins listening for incoming client connections.
+    Returns the listening server socket.
+    """
+
     # Create TCP socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -41,7 +76,13 @@ def setup():
     return server_socket
 
 def run_server_loop(server_socket):
+    """
+    Main server loop that accepts one client at a time and processes commands.
+    Handles LOGIN, MSG, FILE, QUIT, and unknown commands with proper status codes.
+    Catches KeyboardInterrupt for graceful shutdown.
+    """
 
+    # 1-second timeout allows the server to check for KeyboardInterrupt periodically
     server_socket.settimeout(1.0)
 
     print("\nTCP Echo Server running. Press Ctrl+C at any time to shut down.")
@@ -52,7 +93,7 @@ def run_server_loop(server_socket):
                 client_socket, client_address = server_socket.accept()
                 print(f"Client connected from {client_address}")
                 client_socket.settimeout(1.0)
-                # Keep track of this specific client's authentication state
+                # Per-client state: not authenticated until LOGIN succeeds
                 is_authenticated = False
                 current_user = None
 
@@ -60,6 +101,7 @@ def run_server_loop(server_socket):
                     try:
                         data = client_socket.recv(1024)
                         if not data:
+                            # Client closed the connection (sent FIN)
                             break
                         raw_message = data.decode().strip()
                         print(f"Received raw command: {raw_message}")
@@ -100,6 +142,7 @@ def run_server_loop(server_socket):
                             client_socket.sendall("400 ERROR: Unknown command\n".encode())
 
                     except socket.timeout:
+                        # No data arrived within 1 second; loop back and recv again
                         continue
                     except Exception as e:
                         print(f"Error handling client data: {e}")
@@ -109,6 +152,7 @@ def run_server_loop(server_socket):
                 print("Client disconnected gracefully.")
                 
             except socket.timeout:
+                # No connection attempts within 1 second; loop back to accept()
                 continue
                 
             except Exception as e:
@@ -116,13 +160,19 @@ def run_server_loop(server_socket):
                 break
 
     except KeyboardInterrupt:
-        # This catch-all completely covers the entire loop lifetime
+        # Catches Ctrl+C during the accept() loop
         print("\nShutting down server gracefully. Goodbye!")
 
 def receive_file(client_socket, arguments):
+    """
+    Receives a file streamed from the client in binary mode.
+    Parses metadata, acknowledges readiness, reads the declared number of bytes,
+    computes a SHA-256 hash, and sends the result back for client verification.
+    """
+
     try:
         # Parse out filename and filesize from the arguments
-        parts = arguments.split(" ", 1)
+        parts = arguments.rsplit(" ", 1)
         if len(parts) < 2:
             client_socket.sendall("400 ERROR: Missing filename or file size\n".encode())
             return
@@ -141,27 +191,36 @@ def receive_file(client_socket, arguments):
         
         save_path = os.path.join(STORAGE_DIR, path)
 
+        #Ready to receive file byte-stream
         client_socket.sendall(f"150 READY: Send {file_size} bytes\n".encode())
 
         sha256_hash = hashlib.sha256()
         bytes_received = 0
 
+        # Open in binary write mode
         with open(save_path, "wb") as f:
             while bytes_received < file_size:
+                #Receive the current chunk from the client
                 chunk = client_socket.recv(min(4096, file_size - bytes_received))
                 if not chunk:
                     raise ConnectionError("Client disconnected during file transfer.")
+                #Write the chunk to the file path.
                 f.write(chunk)
+                #Keep track of number of bytes receieved
                 bytes_received += len(chunk)
+                #Update the running hash with this chunk
                 sha256_hash.update(chunk)
-                
+        
+        # Finalize the server-side hash
         server_hash = sha256_hash.hexdigest()
         print(f"File received and saved: {save_path} ({bytes_received} bytes)")
         print(f"Calculated Server Hash: {server_hash}")
 
-        client_socket.sendall(f"200 OK: File transfer completed successfully. HASH:{server_hash}\n".encode())
+        # Send final confirmation including the computed hash for client-side verification
+        client_socket.sendall(f"200 OK: File transfer completed. HASH:{server_hash}\n".encode())
 
     except ValueError:
+        # int(parts[1]) failed; file size was not a valid integer
         client_socket.sendall("400 ERROR: Invalid file size format\n".encode())
     except Exception as e:
         print(f"Error during file transfer: {e}")
@@ -169,6 +228,10 @@ def receive_file(client_socket, arguments):
 
 
 def main():
+    """
+    Entry point. Loads approved users from memory, sets up the listening socket,
+    and starts the main server loop to handle client connections.
+    """
 
     load_valid_users()
 

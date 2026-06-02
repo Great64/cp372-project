@@ -1,13 +1,42 @@
-import socket, os, time, hashlib, json
+'''
+CP372 – Computer Networks, Spring 2026
+Assignment 1: TCP Client-Server Application
+
+Script Name: client.py
+Description: TCP client built with Python Socket API. Connects to the server, 
+             sends text commands, transfers files with integrity checks, and 
+             supports automatic reconnection.
+Capabilities:
+    - Interactive CLI command parsing (LOGIN, MSG, FILE, QUIT)
+    - Binary file streaming with client-side SHA-256 hashing
+    - Server response display and integrity verification
+    - Graceful disconnect with optional reconnect loop
+
+Authors:
+    Obeidi, Bassil
+    Barghouti, Alaa
+    Ozog, Philip
+    Soja, Max
+    Yamin, Noah
+'''
 
 
+# Core libraries: socket (Python TCP communication), os (file checks), time (retry delay), hashlib (SHA-256)
+import socket, os, time, hashlib
+
+# Server address configuration 
 HOST = "localhost"
 PORT = 1111
 
 
 def setup():
+    """
+    Attempts to create a TCP socket and connect to the server.
+    Returns the connected socket on success, or None if the server is unreachable.
+    """
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
+        #Initiate 3-way handshake with server
         client_socket.connect((HOST, PORT))
         print(f"Successfully connected to server at {HOST}:{PORT}")
         return client_socket
@@ -21,16 +50,22 @@ def setup():
 
 
 def run_client_loop(client_socket):
+    """
+    Main interactive loop: reads user input, parses commands, and routes
+    traffic to the server. Runs until the user types QUIT or the connection drops.
+    """
     while True:
-        # Prompt user matching the required CLI format
+        # Display prompt and read raw user input from the terminal
         message = input("\n> ").strip()
 
-        # Parse the input to check if it's a special action command
+        # Split the input into command token and the remainder (argument)
+        # e.g., "LOGIN Alice" -> command="LOGIN", argument="Alice"
         parts = message.split(" ", 1)
         command = parts[0].upper()
         argument = parts[1] if len(parts) > 1 else ""
 
-        # Check for QUIT command
+        # ---------------- QUIT ----------------
+        # Graceful termination: notify server before closing the socket
         if command == "QUIT":
             client_socket.sendall(message.encode())
             try:
@@ -40,11 +75,13 @@ def run_client_loop(client_socket):
                 pass # If server closed immediately, skip printing response
             break
 
-        # Check for FILE command
+        # ---------------- FILE ----------------
+        # Hand off to send_file() for multi-phase binary transfer with hashing
         elif command == "FILE":
             send_file(client_socket, argument)
 
-        # Handle all other standard traffic (LOGIN, MSG, or invalid commands)
+        # ---------------- LOGIN / MSG / Invalid ----------------
+        # All other commands are sent as plain text and await a server response
         else:
             try:
                 client_socket.sendall(message.encode())
@@ -56,11 +93,19 @@ def run_client_loop(client_socket):
             except Exception as e:
                 print(f"Network error: {e}")
                 break
-
+    # Clean up: close the socket and release the local port back to the OS
     client_socket.close()
     print("Disconnected from the server session.")
 
 def send_file(client_socket, file_path):
+    """
+    Implements the custom FILE transfer protocol:
+      Phase 1: Send metadata (filename + size) and wait for 150 READY.
+      Phase 2: Stream the file in 4096-byte binary chunks.
+      Phase 3: Receive server's calculated hash and verify integrity.
+    """
+
+    # ---- Pre-flight client-side validation ----
 
     # 1. Error check: Does the file exist locally?
     if not os.path.exists(file_path):
@@ -74,16 +119,20 @@ def send_file(client_socket, file_path):
         print(f"Error: '{filename}' is missing a file extension.")
         return
 
-    # 3. Gather metadata
+
+    
+
+    # 3. Determine the total byte size to announce to the server
     file_size = os.path.getsize(file_path)
 
-   
 
-    # 5. Phase 1: Send metadata request (FILE filename filesize)
+    # ---- Metadata handshake ----
+
+    # 4. Phase 1: Send metadata request (FILE <filename> <filesize>)
     metadata_command = f"FILE {filename} {file_size}"
     client_socket.sendall(metadata_command.encode())
 
-    # 6. Wait for the server's readiness acknowledgement
+    # 5. Wait for the server's readiness acknowledgement
     server_response = client_socket.recv(1024).decode().strip()
     print("Server response:", server_response)
 
@@ -91,9 +140,10 @@ def send_file(client_socket, file_path):
     if "150 READY" not in server_response:
         return
 
+    #Intialized hash value for a new file transfer.
     sha256_hash = hashlib.sha256()
 
-    # 7. Phase 2: Stream the raw binary chunks and calculate the file hash
+    # 6. Phase 2: Stream the raw binary chunks and calculate the file hash
     print(f"Streaming '{filename}' ({file_size} bytes)...")
     try:
         with open(file_path, "rb") as f:
@@ -101,10 +151,11 @@ def send_file(client_socket, file_path):
                 chunk = f.read(4096)
                 if not chunk:
                     break  # Finished reading file
-                
+                # Update the running hash with this chunk
                 sha256_hash.update(chunk)
+                #Send the current chunk to the server
                 client_socket.sendall(chunk)
-        
+        # Finalize the client-side hash
         client_hash = sha256_hash.hexdigest()
         
         # Phase 3: Wait for final server confirmation containing its calculated hash
@@ -132,9 +183,16 @@ def send_file(client_socket, file_path):
         print(f"An error occurred during transmission: {e}")
 
 def main():
+    """
+    Entry point: repeatedly attempts to connect to the server.
+    On success, hands control to the interactive loop.
+    On failure, waits 3 seconds and retries until the user gives up.
+    """
+
     print("Starting client application...")
     
     while True:
+        # Attempt to establish a TCP session
         main_socket = setup()
         
         if main_socket is not None:
