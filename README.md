@@ -71,3 +71,7 @@ Connection closed.
 - **File Transfer**: Server receives files with SHA-256 hash verification for integrity
 - **Storage**: Received files are stored in the `server_storage/` directory
 - **Reconnection**: Client can reconnect automatically if the server becomes unavailable
+
+## Link to Demo Video
+
+https://youtu.be/_tMXCVRNe8E?si=zoQtLGgiWoR1fDGT 
