@@ -42,17 +42,30 @@ def load_valid_users():
     Populates the global VALID_USERS list for runtime authentication checks.
     """
     global VALID_USERS
+    # Clear current users by default
+    VALID_USERS = []
+
+    if not os.path.exists(USER_FILE):
+        print(f"Warning: {USER_FILE} not found. No users loaded.")
+        print(f"Create {USER_FILE} containing a JSON array of usernames, e.g. [\"alice\", \"bob\"] to enable LOGIN.")
+        return
+
     try:
         with open(USER_FILE, 'r') as file:
             data = json.load(file)
-            VALID_USERS = data
-            print("File loaded successfully!")
-    except FileNotFoundError:
-        print(f"Error: The file {USER_FILE} was not found.")
+
+        if not isinstance(data, list):
+            print(f"Error: {USER_FILE} must contain a JSON array of usernames (got {type(data).__name__}). No users loaded.")
+            return
+
+        # Ensure all entries are strings
+        VALID_USERS = [str(u) for u in data]
+        print(f"Loaded {len(VALID_USERS)} user(s) from {USER_FILE}.")
+
     except json.JSONDecodeError:
-        print("Error: The file is not a valid JSON.")
+        print(f"Error: {USER_FILE} is not valid JSON. No users loaded.")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"An unexpected error occurred while loading {USER_FILE}: {e}")
 
 
 def setup():
