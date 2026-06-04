@@ -1,5 +1,5 @@
 '''
-CP372 – Computer Networks, Spring 2026
+CP372 - Computer Networks, Spring 2026
 Assignment 1: TCP Client-Server Application
 
 Script Name: client.py
@@ -40,12 +40,10 @@ def setup():
         client_socket.connect((HOST, PORT))
         print(f"Successfully connected to server at {HOST}:{PORT}")
         return client_socket
-    except ConnectionRefusedError:
-        # Server is not running yet
+    except (ConnectionRefusedError, OSError) as e:
         return None
-    except Exception as e:
-        # Catch other network quirks (like network down)
-        return None
+        # Server is down / Catch other network issues
+        
 
 
 
@@ -119,12 +117,8 @@ def send_file(client_socket, file_path):
         print(f"Error: '{filename}' is missing a file extension.")
         return
 
-
-    
-
     # 3. Determine the total byte size to announce to the server
     file_size = os.path.getsize(file_path)
-
 
     # ---- Metadata handshake ----
 
@@ -173,12 +167,7 @@ def send_file(client_socket, file_path):
                 print("INTEGRITY CHECK FAILED: The file contents were altered or corrupted over the network!")
                 print(f"Client Hash: {client_hash}")
                 print(f"Server Hash: {server_hash}")
-
-
-
-
-        
-
+                
     except Exception as e:
         print(f"An error occurred during transmission: {e}")
 

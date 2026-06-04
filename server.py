@@ -145,7 +145,9 @@ def run_server_loop(server_socket):
                             if not is_authenticated:
                                 client_socket.sendall("403 ERROR: Please LOGIN first\n".encode())
                             else:
+                                client_socket.settimeout(None)
                                 receive_file(client_socket, argument)
+                                client_socket.settimeout(1.0)
 
                         elif command == "QUIT":
                             client_socket.sendall("200 OK: Goodbye!\n".encode())
@@ -209,28 +211,38 @@ def receive_file(client_socket, arguments):
 
         sha256_hash = hashlib.sha256()
         bytes_received = 0
+        transfer_ok = False
 
         # Open in binary write mode
-        with open(save_path, "wb") as f:
-            while bytes_received < file_size:
-                #Receive the current chunk from the client
-                chunk = client_socket.recv(min(4096, file_size - bytes_received))
-                if not chunk:
-                    raise ConnectionError("Client disconnected during file transfer.")
-                #Write the chunk to the file path.
-                f.write(chunk)
-                #Keep track of number of bytes receieved
-                bytes_received += len(chunk)
-                #Update the running hash with this chunk
-                sha256_hash.update(chunk)
+        try:
+            with open(save_path, "wb") as f:
+                while bytes_received < file_size:
+                    #Receive the current chunk from the client
+                    chunk = client_socket.recv(min(4096, file_size - bytes_received))
+                    if not chunk:
+                        raise ConnectionError("Client disconnected during file transfer.")
+                    #Write the chunk to the file path.
+                    f.write(chunk)
+                    #Keep track of number of bytes receieved
+                    bytes_received += len(chunk)
+                    #Update the running hash with this chunk
+                    sha256_hash.update(chunk)
+            transfer_ok = True
         
-        # Finalize the server-side hash
-        server_hash = sha256_hash.hexdigest()
-        print(f"File received and saved: {save_path} ({bytes_received} bytes)")
-        print(f"Calculated Server Hash: {server_hash}")
+            # Finalize the server-side hash
+            server_hash = sha256_hash.hexdigest()
+            print(f"File received and saved: {save_path} ({bytes_received} bytes)")
+            print(f"Calculated Server Hash: {server_hash}")
 
-        # Send final confirmation including the computed hash for client-side verification
-        client_socket.sendall(f"200 OK: File transfer completed. HASH:{server_hash}\n".encode())
+            # Send final confirmation including the computed hash for client-side verification
+            client_socket.sendall(f"200 OK: File transfer completed. HASH:{server_hash}\n".encode())
+        except Exception as e:
+            print(f"Error during file transfer: {e}")
+            client_socket.sendall(f"500 ERROR: File save failed: {e}\n".encode())
+        finally:
+            if not transfer_ok and os.path.exists(save_path):
+                os.remove(save_path)            
+        
 
     except ValueError:
         # int(parts[1]) failed; file size was not a valid integer
