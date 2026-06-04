@@ -50,24 +50,28 @@ QUIT                  # Disconnect from the server
 ### Example Session
 
 ```
-Successfully connected to server at localhost:1111
-Enter command: LOGIN Alice
-Server response: Authentication successful!
+LOGIN Alice
+Server response: 200 OK: Logged in as Alice
 
-Enter command: MSG Hello from client!
-Server response: Message received
+MSG Hello from client!
+Server response: 200 OK: Message received
 
-Enter command: FILE document.txt
-Server response: File received and verified
+FILE document.txt
+Server response: 150 READY: Send 13 bytes
+Streaming 'document.txt' (13 bytes)...
+Server response: 200 OK: File transfer completed. HASH:315f5bdb...
+INTEGRITY CHECK PASSED: Local hash matches server hash perfectly.
+SHA-256: 315f5bdb76d078c43b8ac0064e4a0164612b1fce77c869345bfc94c75894edd3
 
-Enter command: QUIT
-Connection closed.
+QUIT
+Server response: 200 OK: Goodbye!
+Disconnected from the server session.
 ```
 
 ## How It Works
 
 - **Authentication**: Client logs in with a username from `users.json`
-- **Message Relay**: Server echoes text messages back to the client
+- **Message Relay**: Server acknowledges text messages with a success response
 - **File Transfer**: Server receives files with SHA-256 hash verification for integrity
 - **Storage**: Received files are stored in the `server_storage/` directory
 - **Reconnection**: Client can reconnect automatically if the server becomes unavailable
